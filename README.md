@@ -6,26 +6,32 @@ Tools for extracting different types of reaction rules
 ## Installing
 
 ```
-Give the example
+pip install git+https://gitlab.cimm.site/pinigina/rulestools
 ```
 
 
 ## Usage
 
-```python
+Extract individual reaction rule
 
-transformations = [DeleteSmallMolecules(number_of_atoms=4), ReverseReaction(),
-                   CreateRule(rules_from_multistage_reaction=False, environment_atoms_number=1, include_rings=False,
-                                rule_with_functional_groups=False, functional_groups_list=groups_list, as_query=True,
-                                keep_atom_info='reaction_center', keep_reagents=False, keep_meta=False)]
-result_reactions = apply_transformations(transformations, reaction)
-result_reactions
+```python
+from RulesTools.transformations import CreateRule
+
+rules_creator = CreateRule(rules_from_multistage_reaction=False, environment_atoms_number=1, 
+                           rule_with_functional_groups=True, functional_groups_list=groups_list, include_rings=True,
+                           keep_reagents=False, keep_meta=False, as_query=True, keep_atom_info='reaction_center')
+rule = rules_creator(reaction)
 ```
 
-The results contain the mapped reactions and confidence scores:
+Extract reaction rules from the reaction database
 
 ```python
+from RulesTools.database_processing import reaction_rules_extraction
+from RulesTools.transformations import DeleteSmallMolecules, ReverseReaction, CreateRule
 
-reaction_rules_extraction(reaction_database_file, transformations, directory_name)
-
+transformations = [DeleteSmallMolecules(number_of_atoms=4), ReverseReaction(),
+                   CreateRule(rules_from_multistage_reaction=False, environment_atoms_number=1, 
+                              rule_with_functional_groups=True, functional_groups_list=groups_list, include_rings=True,
+                              keep_reagents=False, keep_meta=False, as_query=True, keep_atom_info='reaction_center')]
+reaction_rules_extraction('path_to_reaction_database.rdf', transformations)
 ```
