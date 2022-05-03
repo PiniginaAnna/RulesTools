@@ -4,6 +4,7 @@ from itertools import islice
 
 
 class DeleteSmallMolecules:
+
     def __init__(self, number_of_atoms: int = 6, small_molecules_to_meta: bool = False):
         """
         :param number_of_atoms: molecules with the number of atoms equal to number_of_atoms and below will be removed
@@ -53,6 +54,7 @@ class DeleteSmallMolecules:
 
         return big_molecules, small_molecules
 
+
     @staticmethod
     def _molecules_to_molcontainer(molecules: Iterable) -> MoleculeContainer:
         """
@@ -69,6 +71,7 @@ class DeleteSmallMolecules:
 
 
 class RebalanceReaction:
+
     def __call__(self, reaction: ReactionContainer) -> ReactionContainer:
         """
         Rebalances the reaction by assembling CGR and then decomposing it. Works for all reactions for which the correct
@@ -89,6 +92,7 @@ class RebalanceReaction:
 
 
 class ReverseReaction:
+
     def __call__(self, reaction: ReactionContainer) -> ReactionContainer:
         """
         Reverses given reaction
@@ -103,11 +107,12 @@ class ReverseReaction:
 
 
 class CreateRule:
+
     def __init__(self, rules_from_multistage_reaction: bool = True, environment_atoms_number: int = 1,
                  rule_with_functional_groups: bool = False,
                  functional_groups_list: List[MoleculeContainer | QueryContainer] = None, include_rings: bool = True,
-                 keep_reagents: bool = True, keep_meta: bool = True, return_big_mols: bool = False,
-                 as_query: bool = True, keep_atom_info: Literal['none', 'reaction_center', 'all'] = 'reaction_center',
+                 keep_reagents: bool = True, keep_meta: bool = True, as_query: bool = True,
+                 keep_atom_info: Literal['none', 'reaction_center', 'all'] = 'reaction_center',
                  clean_info: Union[frozenset[str], str] = frozenset(
                      {'neighbors', 'hybridization', 'implicit_hydrogens', 'ring_sizes'})):
         """
@@ -137,15 +142,18 @@ class CreateRule:
         self.include_rings = include_rings
         self.keep_reagents = keep_reagents
         self.keep_meta = keep_meta
-        self.return_big_mols = return_big_mols
         self.as_query = as_query
         self.keep_atom_info = keep_atom_info
         self.clean_info = clean_info
 
-        # TODO дописать про return_big_mols
-
 
     def __call__(self, reaction: ReactionContainer) -> List[ReactionContainer]:
+        """
+        Creates reaction rule from the reaction
+
+        :param reaction: a reaction object
+        :return: A reaction rule
+        """
         if self.rules_from_multistage_reaction:
             reaction_rules = set()
             for single_reaction in islice(reaction.enumerate_centers(), 15):
@@ -158,7 +166,7 @@ class CreateRule:
 
     def rule_extraction(self, reaction: ReactionContainer) -> ReactionContainer:
         """
-        Create reaction rule from the reaction
+        Creates reaction rule from the reaction
 
         :param reaction: a reaction object
         :return: A reaction rule
@@ -191,9 +199,6 @@ class CreateRule:
             for ring in cgr.connected_rings:
                 if set(ring) & center_atoms_numbers:
                     rule_atoms_numbers |= set(ring)
-
-        # TODO иметь ввиду, добавление окружения, функциональных групп и колец происходит независимо друг от друга
-        #  (относительно реакционного центра)
 
         rule_reagents = []
         if self.keep_reagents and self.as_query:
@@ -241,14 +246,12 @@ class CreateRule:
                     query_reaction_molecule = reaction_molecule.substructure(reaction_molecule, as_query=True)
                     query_rule_molecule = query_reaction_molecule.substructure(rule_molecule)
 
-                    # TODO: можно добавить сохранение информации обо всех атомах кроме тех, где произошел разрез молекулы
-                    match self.keep_atom_info:
-                        case 'reaction_center':
-                            for atom_number in set(rule_molecule.atoms_numbers) - set(center_atoms):
-                                query_rule_molecule = self._clean_query_atom(query_rule_molecule, atom_number)
-                        case 'none':
-                            for atom_number in rule_molecule.atoms_numbers:
-                                query_rule_molecule = self._clean_query_atom(query_rule_molecule, atom_number)
+                    if self.keep_atom_info == 'reaction_center':
+                        for atom_number in set(rule_molecule.atoms_numbers) - set(center_atoms):
+                            query_rule_molecule = self._clean_query_atom(query_rule_molecule, atom_number)
+                    elif self.keep_atom_info == 'none':
+                        for atom_number in rule_molecule.atoms_numbers:
+                            query_rule_molecule = self._clean_query_atom(query_rule_molecule, atom_number)
 
                     cleaned_rule_molecules.append(query_rule_molecule)
                     break
@@ -265,21 +268,13 @@ class CreateRule:
         :return: The query molecule with the atom information removed
         """
         for info_type in self.clean_info:
-            match info_type:
-                case 'neighbors':
-                    query_molecule.atom(atom_number).neighbors = None
-                case 'hybridization':
-                    query_molecule.atom(atom_number).hybridization = None
-                case 'implicit_hydrogens':
-                    query_molecule.atom(atom_number).implicit_hydrogens = None
-                case 'ring_sizes':
-                    query_molecule.atom(atom_number).ring_sizes = None
+            if info_type == 'neighbors':
+                query_molecule.atom(atom_number).neighbors = None
+            if info_type == 'hybridization':
+                query_molecule.atom(atom_number).hybridization = None
+            if info_type == 'implicit_hydrogens':
+                query_molecule.atom(atom_number).implicit_hydrogens = None
+            if info_type == 'ring_sizes':
+                query_molecule.atom(atom_number).ring_sizes = None
 
         return query_molecule
-
-
-
-
-
-# TODO добавить везде проверки
-# TODO проверить документацию
