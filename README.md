@@ -26,12 +26,15 @@ rule = rules_creator(reaction)
 Extract reaction rules from the reaction database
 
 ```python
-from RulesTools.database_processing import reaction_rules_extraction
-from RulesTools.transformations import DeleteSmallMolecules, ReverseReaction, CreateRule
+from RulesTools.database_processing import reaction_database_processing
+from RulesTools.transformations import *
+from RulesTools.filters import *
 
+filters = []
 transformations = [DeleteSmallMolecules(number_of_atoms=4), ReverseReaction(),
                    CreateRule(rules_from_multistage_reaction=False, environment_atoms_number=1, 
                               rule_with_functional_groups=True, functional_groups_list=groups_list, include_rings=True,
                               keep_reagents=False, keep_meta=False, as_query=True, keep_atom_info='reaction_center')]
-reaction_rules_extraction('path_to_reaction_database.rdf', transformations)
+
+reaction_database_processing('path_to_reaction_database.rdf', transformations, filters)
 ```

@@ -1,10 +1,13 @@
 from CGRtools.containers import MoleculeContainer, ReactionContainer, QueryContainer
 from typing import Literal, Union, List, Iterable
-from itertools import islice
+from itertools import islice, chain
+
+
+# TODO документация к классам и не только
+# TODO добавить проверки
 
 
 class DeleteSmallMolecules:
-
     def __init__(self, number_of_atoms: int = 6, small_molecules_to_meta: bool = False):
         """
         :param number_of_atoms: molecules with the number of atoms equal to number_of_atoms and below will be removed
@@ -13,7 +16,6 @@ class DeleteSmallMolecules:
         """
         self.number_of_atoms = number_of_atoms
         self.small_molecules_to_meta = small_molecules_to_meta
-
 
     def __call__(self, reaction: ReactionContainer) -> ReactionContainer:
         """
@@ -37,7 +39,6 @@ class DeleteSmallMolecules:
 
         return new_reaction
 
-
     def _split_molecules(self, molecules: Iterable) -> tuple:
         """
         Splits molecules according to the number of heavy atoms
@@ -53,7 +54,6 @@ class DeleteSmallMolecules:
                 small_molecules.append(molecule)
 
         return big_molecules, small_molecules
-
 
     @staticmethod
     def _molecules_to_molcontainer(molecules: Iterable) -> MoleculeContainer:
@@ -71,7 +71,6 @@ class DeleteSmallMolecules:
 
 
 class RebalanceReaction:
-
     def __call__(self, reaction: ReactionContainer) -> ReactionContainer:
         """
         Rebalances the reaction by assembling CGR and then decomposing it. Works for all reactions for which the correct
@@ -82,17 +81,12 @@ class RebalanceReaction:
         """
         cgr = ~reaction
         reactants, products = ~cgr
-        reagents = reaction.reagents
-        meta = reaction.meta
-        name = reaction.name
-        rebalanced_reaction = ReactionContainer(reactants.split(), products.split(), reagents, meta)
-        rebalanced_reaction.name = name
-
+        rebalanced_reaction = ReactionContainer(reactants.split(), products.split(), reaction.reagents, reaction.meta)
+        rebalanced_reaction.name = reaction.name
         return rebalanced_reaction
 
 
 class ReverseReaction:
-
     def __call__(self, reaction: ReactionContainer) -> ReactionContainer:
         """
         Reverses given reaction
@@ -107,7 +101,6 @@ class ReverseReaction:
 
 
 class CreateRule:
-
     def __init__(self, rules_from_multistage_reaction: bool = True, environment_atoms_number: int = 1,
                  rule_with_functional_groups: bool = False,
                  functional_groups_list: List[MoleculeContainer | QueryContainer] = None, include_rings: bool = True,
@@ -146,7 +139,6 @@ class CreateRule:
         self.keep_atom_info = keep_atom_info
         self.clean_info = clean_info
 
-
     def __call__(self, reaction: ReactionContainer) -> List[ReactionContainer]:
         """
         Creates reaction rule from the reaction
@@ -157,14 +149,12 @@ class CreateRule:
         if self.rules_from_multistage_reaction:
             reaction_rules = set()
             for single_reaction in islice(reaction.enumerate_centers(), 15):
-                reaction_rule = self.rule_extraction(single_reaction)
+                reaction_rule = self._rule_extraction(single_reaction)
                 reaction_rules.add(reaction_rule)
             return list(reaction_rules)
+        return [self._rule_extraction(reaction)]
 
-        return [self.rule_extraction(reaction)]
-
-
-    def rule_extraction(self, reaction: ReactionContainer) -> ReactionContainer:
+    def _rule_extraction(self, reaction: ReactionContainer) -> ReactionContainer:
         """
         Creates reaction rule from the reaction
 
@@ -226,7 +216,6 @@ class CreateRule:
 
         return reaction_rule
 
-
     def _clean_rule_molecules(self, rule_molecules: (tuple, list), reaction_molecules: (tuple, list),
                               center_atoms: set) -> list:
         """
@@ -258,7 +247,6 @@ class CreateRule:
 
         return cleaned_rule_molecules
 
-
     def _clean_query_atom(self, query_molecule: QueryContainer, atom_number: int) -> QueryContainer:
         """
         Removes the specified information about atom with atom_number from the query molecule
@@ -278,3 +266,67 @@ class CreateRule:
                 query_molecule.atom(atom_number).ring_sizes = None
 
         return query_molecule
+
+
+class RemoveReagents:
+    def __call__(self, reaction: ReactionContainer):
+        reaction.remove_reagents()
+        return reaction
+
+
+def _remover(old: Iterable, changes: Iterable) -> tuple:
+    """
+    Removes from old changes items
+
+    :param old: set of items
+    :param changes: items to be removed
+    :return: old items without changes items
+    """
+    return tuple(m for m in old if m not in changes)
+# TODO check CGRtools remove_reagents
+def remove_reagents(reaction: ReactionContainer) -> ReactionContainer:
+    """
+    Removes reagents from reactants
+
+    :param reaction: input reaction
+    :return: reaction without reagents, reagents are updated
+    """
+    product_atoms = [i for m in reaction.products for i in m.atoms_numbers]  # номера атомов всех продуктов
+
+    to_transfer = tuple(m for m in reaction.reactants if not set(m).intersection(product_atoms))  # реактанты, атомы которых не встречаются в продуктах
+    # TODO добавить set
+    if to_transfer:
+        new_reagents = tuple(m for m in chain(reaction.reagents, to_transfer))  # добавление к реагентам реактантов
+        new_reaction = ReactionContainer(_remover(reaction.reactants, to_transfer),
+                                         reaction.products,
+                                         new_reagents,
+                                         reaction.meta)
+        new_reaction.name = reaction.name
+        return new_reaction
+    else:
+        return reaction
+def remove_unused_molecules(reaction: ReactionContainer) -> ReactionContainer:
+    """
+    Moves unused molecules in reactants and products to reagents
+
+    :param reaction: input reaction
+    :return: new reaction, reagents are updated
+    """
+    unused = tuple(set(reaction.reactants).intersection(reaction.products))  # молекулы, оставшиеся без изменений
+    if unused:
+        new_reagents = tuple(m for m in chain(reaction.reagents, unused))
+        new_reaction = ReactionContainer(
+            _remover(reaction.reactants, unused),
+            _remover(reaction.products, unused),
+            new_reagents,
+            reaction.meta)
+        new_reaction.name = reaction.name
+        return new_reaction
+    else:
+        return reaction
+
+
+class AddStandardize:
+    def __call__(self, reaction: ReactionContainer):
+        reaction.standardize()
+        return reaction
