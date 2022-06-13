@@ -5,6 +5,7 @@ setup(
     version='0.1.0',
     packages=find_packages(include=['RulesTools', 'RulesTools.database_processing', 'RulesTools.filters',
                                     'RulesTools.transformations']),
-    install_requires=['CGRtools', 'tqdm', 'StructureFingerprint', 'numpy', 'python>=3.8'],
+    python_requires='>=3.8',
+    install_requires=['CGRtools', 'tqdm', 'StructureFingerprint', 'numpy', 'py-mini-racer>=0.4.0'],
     license='MIT'
 )

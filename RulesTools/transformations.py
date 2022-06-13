@@ -1,18 +1,16 @@
-from CGRtools.containers import MoleculeContainer, ReactionContainer, QueryContainer
+from CGRtools import MoleculeContainer, ReactionContainer, QueryContainer
 from typing import Literal, Union, List, Iterable
 from itertools import islice, chain
 
 
-# TODO документация к классам и не только
-# TODO добавить проверки
-
-
 class DeleteSmallMolecules:
+    """Allows to remove "small" molecules from the reaction and save information about them"""
+
     def __init__(self, number_of_atoms: int = 6, small_molecules_to_meta: bool = False):
         """
         :param number_of_atoms: molecules with the number of atoms equal to number_of_atoms and below will be removed
         from the reaction
-        :param small_molecules_to_meta: if True, deleted information is saved to meta
+        :param small_molecules_to_meta: if True, deleted molecules are saved to meta
         """
         self.number_of_atoms = number_of_atoms
         self.small_molecules_to_meta = small_molecules_to_meta
@@ -22,7 +20,7 @@ class DeleteSmallMolecules:
         Removes molecules with the number of atoms equal to number_of_atoms or lower from the reaction
 
         :param reaction: a reaction object
-        :return: The reaction without "small" molecules
+        :return: the reaction without "small" molecules
         """
         new_reactants, small_reactants = self._split_molecules(reaction.reactants)
         new_products, small_products = self._split_molecules(reaction.products)
@@ -44,7 +42,7 @@ class DeleteSmallMolecules:
         Splits molecules according to the number of heavy atoms
 
         :param molecules:
-        :return:
+        :return: "big" molecules and "small" molecules
         """
         big_molecules, small_molecules = [], []
         for molecule in molecules:
@@ -60,8 +58,8 @@ class DeleteSmallMolecules:
         """
         Unites molecules into one molecular container
 
-        :param molecules:
-        :return:
+        :param molecules: set of molecules
+        :return: one molecular graph
         """
         molcontainer = MoleculeContainer()
         for molecule in molecules:
@@ -71,13 +69,15 @@ class DeleteSmallMolecules:
 
 
 class RebalanceReaction:
+    """Allows to rebalance the reaction by assembling CGR and then decomposing it"""
+
     def __call__(self, reaction: ReactionContainer) -> ReactionContainer:
         """
         Rebalances the reaction by assembling CGR and then decomposing it. Works for all reactions for which the correct
         CGR can be assembled
 
         :param reaction: a reaction object
-        :return: A rebalanced reaction
+        :return: a rebalanced reaction
         """
         cgr = ~reaction
         reactants, products = ~cgr
@@ -87,12 +87,14 @@ class RebalanceReaction:
 
 
 class ReverseReaction:
+    """Allows to reverse reaction"""
+
     def __call__(self, reaction: ReactionContainer) -> ReactionContainer:
         """
         Reverses given reaction
 
         :param reaction: a reaction object
-        :return: The reversed reaction
+        :return: the reversed reaction
         """
         reversed_reaction = ReactionContainer(reaction.products, reaction.reactants, reaction.reagents, reaction.meta)
         reversed_reaction.name = reaction.name
@@ -100,23 +102,108 @@ class ReverseReaction:
         return reversed_reaction
 
 
+class RemoveReagents:
+    """Allows to remove reagents from reactants and products"""
+
+    def __init__(self, keep_reagents: bool = True):
+        """
+        :param keep_reagents: if True, the reagents are written to ReactionContainer
+        """
+        self.keep_reagents = keep_reagents
+
+    def __call__(self, reaction: ReactionContainer) -> ReactionContainer:
+        """
+        Removes reagents (not changed molecules or molecules not involved in the reaction) from reactants and products
+
+        :param reaction: a reaction object
+        :return: cleaned reaction
+        """
+        reaction.remove_reagents(keep_reagents=self.keep_reagents)
+        reaction = self.remove_unused_molecules(reaction)
+        return reaction
+
+    def remove_unused_molecules(self, reaction: ReactionContainer) -> ReactionContainer:
+        """
+        Moves not changed molecules in reactants and products to reagents
+
+        :param reaction: input reaction
+        :return: new reaction, reagents are updated
+        """
+        unused = tuple(set(reaction.reactants).intersection(reaction.products))
+        if unused:
+            if self.keep_reagents:
+                new_reagents = tuple(m for m in chain(reaction.reagents, unused))
+            else:
+                new_reagents = reaction.reagents
+            new_reaction = ReactionContainer(
+                self._remover(reaction.reactants, unused),
+                self._remover(reaction.products, unused),
+                new_reagents,
+                reaction.meta)
+            new_reaction.name = reaction.name
+            return new_reaction
+        else:
+            return reaction
+
+    @staticmethod
+    def _remover(old: Iterable, changes: Iterable) -> tuple:
+        """
+        Removes from old changes items
+
+        :param old: set of items
+        :param changes: items to be removed
+        :return: old items without changes items
+        """
+        return tuple(m for m in old if m not in changes)
+
+
+class AddStandardize:
+    """Allows to add reaction standardization"""
+
+    def __call__(self, reaction: ReactionContainer) -> ReactionContainer:
+        """
+        Apply CGRtools standardize method
+
+        :param reaction: a reaction object
+        :return: standardized reaction
+        """
+        reaction.standardize()
+        return reaction
+
+
+class AddCanonicalize:
+    """Allows to add reaction canonicalization"""
+
+    def __call__(self, reaction: ReactionContainer) -> ReactionContainer:
+        """
+        Apply CGRtools canonicalize method
+
+        :param reaction: a reaction object
+        :return: canonicalized reaction
+        """
+        reaction.canonicalize()
+        return reaction
+
+
 class CreateRule:
+    """Allows to create reaction rule of various types"""
+
     def __init__(self, rules_from_multistage_reaction: bool = True, environment_atoms_number: int = 1,
                  rule_with_functional_groups: bool = False,
-                 functional_groups_list: List[MoleculeContainer | QueryContainer] = None, include_rings: bool = True,
-                 keep_reagents: bool = True, keep_meta: bool = True, as_query: bool = True,
+                 functional_groups_list: List[Union[MoleculeContainer, QueryContainer]] = None,
+                 include_rings: bool = True, keep_reagents: bool = True, keep_meta: bool = True, as_query: bool = True,
                  keep_atom_info: Literal['none', 'reaction_center', 'all'] = 'reaction_center',
                  clean_info: Union[frozenset[str], str] = frozenset(
                      {'neighbors', 'hybridization', 'implicit_hydrogens', 'ring_sizes'})):
         """
         :param rules_from_multistage_reaction: if True, then it extracts all reaction rules of a given type separately
         from a multistep reaction
-        :param environment_atoms_number: the reaction rule with the reaction center extended to the
-        number of atoms equal environment_atoms_number is extracted
+        :param environment_atoms_number: the reaction rule with the reaction center extended to the number of atoms
+        equal environment_atoms_number is extracted
         :param rule_with_functional_groups: if True, then the reaction rule is extracted, the extended reaction center
         includes the functional groups adjacent to the reaction center
         :param functional_groups_list: list of functional groups contained as MoleculeContainer or QueryContainer
-        :param include_rings: if True, it additionally extracts all rings adjacent to the extended reaction center
+        :param include_rings: if True, it additionally extracts all rings adjacent to the reaction center
         :param as_query: if True, then returns a reaction rule with query containers and preserves or deletes specified
         structural properties of atoms such as: neighbors, hybridization, implicit hydrogens, ring sizes
         :param keep_atom_info: if 'all', then information about all atoms is saved, if 'reaction_center', then
@@ -175,10 +262,12 @@ class CreateRule:
             for molecule in reaction.molecules():
                 for functional_group in self.functional_groups_list:
 
-                    for mapping in functional_group.get_mapping(molecule):  # mapping of the functional group across the molecule
+                    # mapping of the functional group across the molecule
+                    for mapping in functional_group.get_mapping(molecule):
                         functional_group.remap(mapping)
 
-                        if set(functional_group.atoms_numbers) & center_atoms_numbers:  # check for intersection of the functional group with the reaction centre
+                        # check for intersection of the functional group with the reaction centre
+                        if set(functional_group.atoms_numbers) & center_atoms_numbers:
                             rule_atoms_numbers |= set(functional_group.atoms_numbers)
 
                         remapping = {value: key for key, value in mapping.items()}
@@ -268,65 +357,37 @@ class CreateRule:
         return query_molecule
 
 
-class RemoveReagents:
-    def __call__(self, reaction: ReactionContainer):
-        reaction.remove_reagents()
-        return reaction
+class CreateNotQuery:
+    """Allows to create not query reaction (reaction rule) from query"""
 
+    def __call__(self, rule: ReactionContainer) -> ReactionContainer:
+        """
+        Creates not query reaction (reaction rule) from query
 
-def _remover(old: Iterable, changes: Iterable) -> tuple:
-    """
-    Removes from old changes items
+        :param rule: reaction (reaction rule) with query molecules
+        :return: reaction (reaction rule) with not query molecules
+        """
+        not_query_reactants = self.create_not_query_molecules(rule.reactants)
+        not_query_products = self.create_not_query_molecules(rule.products)
+        not_query_rule = ReactionContainer(not_query_reactants, not_query_products, rule.reagents, rule.meta)
+        not_query_rule.name = rule.name
+        return not_query_rule
 
-    :param old: set of items
-    :param changes: items to be removed
-    :return: old items without changes items
-    """
-    return tuple(m for m in old if m not in changes)
-# TODO check CGRtools remove_reagents
-def remove_reagents(reaction: ReactionContainer) -> ReactionContainer:
-    """
-    Removes reagents from reactants
+    @staticmethod
+    def create_not_query_molecules(query_molecules: Iterable) -> list[MoleculeContainer]:
+        """
+        Creates not query molecules from queries
 
-    :param reaction: input reaction
-    :return: reaction without reagents, reagents are updated
-    """
-    product_atoms = [i for m in reaction.products for i in m.atoms_numbers]  # номера атомов всех продуктов
-
-    to_transfer = tuple(m for m in reaction.reactants if not set(m).intersection(product_atoms))  # реактанты, атомы которых не встречаются в продуктах
-    # TODO добавить set
-    if to_transfer:
-        new_reagents = tuple(m for m in chain(reaction.reagents, to_transfer))  # добавление к реагентам реактантов
-        new_reaction = ReactionContainer(_remover(reaction.reactants, to_transfer),
-                                         reaction.products,
-                                         new_reagents,
-                                         reaction.meta)
-        new_reaction.name = reaction.name
-        return new_reaction
-    else:
-        return reaction
-def remove_unused_molecules(reaction: ReactionContainer) -> ReactionContainer:
-    """
-    Moves unused molecules in reactants and products to reagents
-
-    :param reaction: input reaction
-    :return: new reaction, reagents are updated
-    """
-    unused = tuple(set(reaction.reactants).intersection(reaction.products))  # молекулы, оставшиеся без изменений
-    if unused:
-        new_reagents = tuple(m for m in chain(reaction.reagents, unused))
-        new_reaction = ReactionContainer(
-            _remover(reaction.reactants, unused),
-            _remover(reaction.products, unused),
-            new_reagents,
-            reaction.meta)
-        new_reaction.name = reaction.name
-        return new_reaction
-    else:
-        return reaction
-
-
-class AddStandardize:
-    def __call__(self, reaction: ReactionContainer):
-        reaction.standardize()
-        return reaction
+        :param query_molecules: set of query molecules
+        :return: set of not query molecules
+        """
+        not_query_molecules = []
+        for molecule in query_molecules:
+            not_query_molecule = MoleculeContainer()
+            for atom_number, atom_type in molecule.atoms():
+                not_query_molecule.add_atom(atom_type.atomic_number, atom_number, charge=atom_type.charge,
+                                            is_radical=atom_type.is_radical)
+            for atom_number1, atom_number2, bond_type in molecule.bonds():
+                not_query_molecule.add_bond(atom_number1, atom_number2, int(bond_type))
+            not_query_molecules.append(not_query_molecule)
+        return not_query_molecules

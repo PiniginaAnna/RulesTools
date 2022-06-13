@@ -2,6 +2,8 @@ from CGRtools import RDFRead, RDFWrite, ReactionContainer
 from tqdm import tqdm
 from collections import defaultdict
 from pickle import dump
+from typing import Tuple
+import os
 
 
 def apply_transformations(transformations: list, reaction: ReactionContainer) -> ReactionContainer:
@@ -13,16 +15,20 @@ def apply_transformations(transformations: list, reaction: ReactionContainer) ->
     :return: result reaction
     """
     for transform in transformations:
-        reaction = transform(reaction)
+        if isinstance(reaction, list):  # like rules list obtained from 1 reaction
+            reaction = [transform(real_reaction) for real_reaction in reaction]
+        else:
+            reaction = transform(reaction)
     return reaction
 
 
-def apply_filters(reaction: ReactionContainer, reaction_filters):
+def apply_filters(reaction: ReactionContainer, reaction_filters) -> Tuple[ReactionContainer, bool]:
     """
+    Applies filters to given reaction, return a reaction and bool
 
-    :param reaction:
-    :param reaction_filters:
-    :return:
+    :param reaction: input reaction
+    :param reaction_filters: list of filters
+    :return: reaction with marks in meta and True if there are at least one filter returned True
     """
     is_filtered = False
     for reaction_filter in reaction_filters:
@@ -32,58 +38,71 @@ def apply_filters(reaction: ReactionContainer, reaction_filters):
     return reaction, is_filtered
 
 
-def reaction_database_processing(reaction_database_file_name: str, transformations: list, filters: list, result_directory_name: str = './',
-                                 error_reactions_file_name: str = 'error_reactions', rules_file_name: str = 'rules'):
+def reaction_database_processing(reaction_database_file_name: str, transformations: list = None, filters: list = None,
+                                 save_only_unique: bool = False, result_directory_name: str = './',
+                                 filtered_reactions_file_name: str = 'filtered_reactions.rdf',
+                                 result_reactions_file_name: str = 'result_reactions.rdf',
+                                 result_reactions_pkl_file_name: str = 'result_reactions.pickle'):
     """
-    Extracts reaction rules from the reaction database and applies other given transformations. Returns rules files in
-    RDF and pickle formats and error reactions file in RDF format
+    Applies given transformations and filters to reactions from the reaction database. Returns result reactions files in
+    RDF and pickle (if save_only_unique is True) formats and filtered reactions file in RDF format
 
-    :param reaction_database_file_name: path to the reaction database
-    :param transformations: list of transformations include rules extraction
-
+    :param reaction_database_file_name: path to the reaction database (.rdf format)
+    :param transformations: list of transformations
+    :param filters: list of filters
+    :param save_only_unique: if True, then only unique reactions with information about frequency are saved
     :param result_directory_name: result directory name
-    :param error_reactions_file_name: error reactions file name
-    :param rules_file_name: rules file name
+    :param filtered_reactions_file_name: filtered and error reactions file name (.rdf)
+    :param result_reactions_file_name: result reactions file name (.rdf)
+    :param result_reactions_pkl_file_name: result reactions file name (.pickle)
     """
-    # TODO опциональный выбор типа файла
-    # TODO добавить распараллеливание?
+    os.makedirs(result_directory_name, exist_ok=True)
 
-    # def run_parallel(reactions, num_processes=38):
-    #     with Pool(num_processes) as p:
-    #         new_reactions = p.map(clean_reaction, reactions)
-    #     return new_reactions
+    if os.path.isfile(f'{result_directory_name}/{filtered_reactions_file_name}'):
+        os.remove(f'{result_directory_name}/{filtered_reactions_file_name}')
 
-
-    unique_rules = defaultdict(lambda: [0, []])
+    if os.path.isfile(f'{result_directory_name}/{result_reactions_file_name}'):
+        os.remove(f'{result_directory_name}/{result_reactions_file_name}')
 
     with RDFRead(reaction_database_file_name, indexable=True) as reactions:
         reactions.reset_index()
-
         for reaction in tqdm(reactions, total=len(reactions)):
             try:
                 if filters:
                     reaction, is_filtered = apply_filters(reaction, filters)
-                    print('filters good')
                     if is_filtered:
-                        with RDFWrite(f'{result_directory_name}/{error_reactions_file_name}.rdf', append=True) as errors_file:
-                            errors_file.write(reaction)
+                        with RDFWrite(f'{result_directory_name}/{filtered_reactions_file_name}', append=True) as \
+                                filtered_file:
+                            filtered_file.write(reaction)
+                            continue
                 if transformations:
-                    rules = apply_transformations(transformations, reaction)
-                    print('trans good')
+                    reaction = apply_transformations(transformations, reaction)
             except Exception:
-                with RDFWrite(f'{result_directory_name}/{error_reactions_file_name}.rdf', append=True) as errors_file:
+                with RDFWrite(f'{result_directory_name}/{filtered_reactions_file_name}', append=True) as \
+                        filtered_file:
                     reaction.meta['Error'] = 'True'
-                    errors_file.write(reaction)
+                    filtered_file.write(reaction)
             else:
-                for rule in rules:
-                    unique_rules[rule][0] += 1
-                    # unique_rules[rule][1].append(reaction.meta['Reaction_ID'])
+                with RDFWrite(f'{result_directory_name}/{result_reactions_file_name}', append=True) as result_file:
+                    if isinstance(reaction, list):
+                        for real_reaction in reaction:
+                            real_reaction.clean2d()
+                            result_file.write(real_reaction)
+                    else:
+                        reaction.clean2d()
+                        result_file.write(reaction)
 
-    with RDFWrite(f'{result_directory_name}/{rules_file_name}.rdf') as rules_file:
-        with open(f'{result_directory_name}/{rules_file_name}.pickle', 'ab') as rules_file2:
-            for rule, info in unique_rules.items():
-                rule.meta['number_of_reactions'] = info[0]
-                # rule.meta['reactions_id'] = ' '.join(info[1])
-                rule.clean2d()
-                rules_file.write(rule)
-                dump(rule, rules_file2)
+    if save_only_unique:
+
+        unique_reactions = defaultdict(int)
+
+        with RDFRead(f'{result_directory_name}/{result_reactions_file_name}', indexable=True) as reactions:
+            for reaction in reactions:
+                unique_reactions[reaction] += 1
+
+        with RDFWrite(f'{result_directory_name}/{result_reactions_file_name}') as result_file:
+            with open(f'{result_directory_name}/{result_reactions_pkl_file_name}', 'wb') as result_file2:
+                for result_reaction, number_of_reactions in unique_reactions.items():
+                    result_reaction.meta['Number_of_reactions'] = number_of_reactions
+                    result_file.write(result_reaction)
+                    dump(result_reaction, result_file2)
