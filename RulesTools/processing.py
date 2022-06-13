@@ -18,6 +18,12 @@ def apply_transformations(transformations: list, reaction: ReactionContainer) ->
 
 
 def apply_filters(reaction: ReactionContainer, reaction_filters):
+    """
+
+    :param reaction:
+    :param reaction_filters:
+    :return:
+    """
     is_filtered = False
     for reaction_filter in reaction_filters:
         if reaction_filter(reaction):
