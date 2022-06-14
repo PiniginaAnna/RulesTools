@@ -1,7 +1,7 @@
 from CGRtools import RDFRead, RDFWrite, ReactionContainer
 from tqdm import tqdm
 from collections import defaultdict
-from pickle import dump
+from pickle import dump, load
 from typing import Tuple
 import os
 
@@ -39,7 +39,8 @@ def apply_filters(reaction: ReactionContainer, reaction_filters) -> Tuple[Reacti
 
 
 def reaction_database_processing(reaction_database_file_name: str, transformations: list = None, filters: list = None,
-                                 save_only_unique: bool = False, result_directory_name: str = './',
+                                 save_only_unique: bool = False, fix_aam: bool = False,
+                                 result_directory_name: str = './',
                                  filtered_reactions_file_name: str = 'filtered_reactions.rdf',
                                  result_reactions_file_name: str = 'result_reactions.rdf',
                                  result_reactions_pkl_file_name: str = 'result_reactions.pickle'):
@@ -51,6 +52,7 @@ def reaction_database_processing(reaction_database_file_name: str, transformatio
     :param transformations: list of transformations
     :param filters: list of filters
     :param save_only_unique: if True, then only unique reactions with information about frequency are saved
+    :param fix_aam: if True, then AAM fixing rules are applied
     :param result_directory_name: result directory name
     :param filtered_reactions_file_name: filtered and error reactions file name (.rdf)
     :param result_reactions_file_name: result reactions file name (.rdf)
@@ -64,10 +66,18 @@ def reaction_database_processing(reaction_database_file_name: str, transformatio
     if os.path.isfile(f'{result_directory_name}/{result_reactions_file_name}'):
         os.remove(f'{result_directory_name}/{result_reactions_file_name}')
 
+    if fix_aam:
+        with open('RulesTools/RulesTools/aam_fixing_rules.pickle', 'rb') as f:
+            ReactionContainer.__class_cache__[ReactionContainer] = {}
+            ReactionContainer.__class_cache__[ReactionContainer][
+                '_StandardizeReaction__remapping_compiled_rules'] = load(f)
+
     with RDFRead(reaction_database_file_name, indexable=True) as reactions:
         reactions.reset_index()
         for reaction in tqdm(reactions, total=len(reactions)):
             try:
+                if fix_aam:
+                    print('fixed' if reaction.fix_mapping() else 'not changed')
                 if filters:
                     reaction, is_filtered = apply_filters(reaction, filters)
                     if is_filtered:

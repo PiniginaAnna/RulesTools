@@ -105,11 +105,13 @@ class ReverseReaction:
 class RemoveReagents:
     """Allows to remove reagents from reactants and products"""
 
-    def __init__(self, keep_reagents: bool = True):
+    def __init__(self, keep_reagents: bool = True, reagents_max_size: int = 7):
         """
         :param keep_reagents: if True, the reagents are written to ReactionContainer
+        :param reagents_max_size: max size of molecules that are called reagents, bigger are deleted
         """
         self.keep_reagents = keep_reagents
+        self.regents_max_size = reagents_max_size
 
     def __call__(self, reaction: ReactionContainer) -> ReactionContainer:
         """
@@ -118,26 +120,24 @@ class RemoveReagents:
         :param reaction: a reaction object
         :return: cleaned reaction
         """
-        reaction.remove_reagents(keep_reagents=self.keep_reagents)
-        reaction = self.remove_unused_molecules(reaction)
-        return reaction
+        cgr = ~reaction
+        center_atoms = set(cgr.center_atoms)
+        not_reacting_molecules = (molecule for molecule in chain(reaction.reactants, reaction.products) if
+                                  center_atoms.isdisjoint(molecule))
 
-    def remove_unused_molecules(self, reaction: ReactionContainer) -> ReactionContainer:
-        """
-        Moves not changed molecules in reactants and products to reagents
+        not_changed_molecules = tuple(set(reaction.reactants).intersection(reaction.products))
 
-        :param reaction: input reaction
-        :return: new reaction, reagents are updated
-        """
-        unused = tuple(set(reaction.reactants).intersection(reaction.products))
-        if unused:
+        molecules_to_remove = set(not_reacting_molecules).union(not_changed_molecules)
+
+        if molecules_to_remove:
             if self.keep_reagents:
-                new_reagents = tuple(m for m in chain(reaction.reagents, unused))
+                new_reagents = reaction.reagents + tuple(molecule for molecule in molecules_to_remove if
+                                                         len(molecule) <= self.regents_max_size)
             else:
                 new_reagents = reaction.reagents
             new_reaction = ReactionContainer(
-                self._remover(reaction.reactants, unused),
-                self._remover(reaction.products, unused),
+                self._remover(reaction.reactants, molecules_to_remove),
+                self._remover(reaction.products, molecules_to_remove),
                 new_reagents,
                 reaction.meta)
             new_reaction.name = reaction.name

@@ -155,10 +155,14 @@ class CheckDynamicBondsNumber:
         :param reaction: input reaction
         :return: True or False
         """
-        cgr = ~reaction
-        if self.min_bonds_number <= len(cgr.center_bonds) <= self.max_bonds_number:
-            return False
-        return True
+        copy_reaction = reaction.copy()
+        try:
+            copy_reaction.kekule()
+        finally:
+            cgr = ~copy_reaction
+            if self.min_bonds_number <= len(cgr.center_bonds) <= self.max_bonds_number:
+                return False
+            return True
 
 
 class CheckSmallMolecules:
@@ -335,11 +339,11 @@ class FilterWrongCHBreaking:
 
 
 class FilterCCsp3Breaking:
-    """Allows to check if there is C(sp3)-C(sp3) bonds breaking"""
+    """Allows to check if there is C(sp3)-C bonds breaking"""
 
     def __call__(self, reaction: ReactionContainer) -> bool:
         """
-        Returns True if there is C(sp3)-C(sp3) bonds breaking, else False
+        Returns True if there is C(sp3)-C bonds breaking, else False
 
         :param reaction: input reaction
         :return: True or False
@@ -352,9 +356,9 @@ class FilterCCsp3Breaking:
 
             is_bond_broken = bond.order is not None and bond.p_order is None
             are_atoms_carbons = atom.atomic_symbol == 'C' and neighbour.atomic_symbol == 'C'
-            are_atoms_sp3 = atom.hybridization == 1 and neighbour.hybridization == 1
+            is_atom_sp3 = atom.hybridization == 1 or neighbour.hybridization == 1
 
-            if is_bond_broken and are_atoms_carbons and are_atoms_sp3:
+            if is_bond_broken and are_atoms_carbons and is_atom_sp3:
                 return True
         return False
 
