@@ -102,7 +102,7 @@ def reaction_database_processing(reaction_database_file_name: str, transformatio
                         reaction.clean2d()
                         result_file.write(reaction)
 
-    if save_only_unique:
+    if save_only_unique and os.path.isfile(f'{result_directory_name}/{result_reactions_file_name}'):
 
         unique_reactions = defaultdict(int)
 

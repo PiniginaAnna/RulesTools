@@ -14,7 +14,7 @@ class CheckCGRConnectedComponents:
         :param reaction: input reaction
         :return: True or False
         """
-        tmp_reaction = ReactionContainer(reaction.reactants, reaction.products)  # нужно убрать реагенты
+        tmp_reaction = ReactionContainer(reaction.reactants, reaction.products)
         cgr = ~tmp_reaction
         if cgr.connected_components_count > 1:
             return True
@@ -95,8 +95,8 @@ def tanimoto_kernel(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     """
     x_dot = np.dot(x, y.T)
 
-    x2 = (x**2).sum(axis=1)
-    y2 = (y**2).sum(axis=1)
+    x2 = (x ** 2).sum(axis=1)
+    y2 = (y ** 2).sum(axis=1)
 
     len_x2 = len(x2)
     len_y2 = len(y2)
@@ -239,7 +239,7 @@ class FilterMultiCenter:
 
 
 class CheckRings:
-    """Allows to check if there is a reaction in rings"""
+    """Allows to check if there is changing rings number in the reaction"""
 
     def __call__(self, reaction: ReactionContainer):
         """
@@ -391,8 +391,8 @@ class FilterCCRingBreaking:
             is_bond_broken = bond.order is not None and bond.p_order is None
             are_atoms_carbons = atom.atomic_symbol == 'C' and neighbour.atomic_symbol == 'C'
             are_atoms_in_ring = bool({5, 6, 7}.intersection(atom.ring_sizes)) and \
-                               bool({5, 6, 7}.intersection(neighbour.ring_sizes)) and \
-                               any(atom_id in ring and neighbour_id in ring for ring in reactants_rings)
+                                bool({5, 6, 7}.intersection(neighbour.ring_sizes)) and \
+                                any(atom_id in ring and neighbour_id in ring for ring in reactants_rings)
 
             if is_bond_broken and are_atoms_carbons and are_atoms_in_ring:
                 return True
@@ -400,72 +400,21 @@ class FilterCCRingBreaking:
         return False
 
 
+class FilterRulesByPopularity:
+    """Allows to check if there is a rare rule (was extracted from small number of reactions)"""
 
+    def __init__(self, min_popularity: int = 3):
+        """
+        :param min_popularity: min acceptable number of reactions from which rule was extracted
+        """
+        self.min_popularity = min_popularity
 
+    def __call__(self, rule: ReactionContainer) -> bool:
+        """
+        Returns True if there is a rare rule (was extracted from small number of reactions), else False
 
-
-        # @staticmethod
-        # def is_wrong_c_h_breaking2(cgr: CGRContainer) -> bool:
-        #     """
-        #     Returns True if there is C-C bonds formation from breaking C-H exclude other than C-H at the alpha-position of the carbonyl group, to exclude
-        #     condensation reactions and reactions with carbenes, else False
-        #
-        #     :param cgr: CGR with explicified hydrogens
-        #     :return: True or False
-        #     """
-        #     neigh_carbon_id = None
-        #     for cgr_atom_id, neighbours in cgr._bonds.items():
-        #         for neighbour_id, bond in neighbours.items():
-        #             if bond == DynamicBond(1, None):  # разорвалась какая то связь
-        #                 center_atom = cgr.atom(cgr_atom_id)
-        #                 neighbour = cgr.atom(neighbour_id)
-        #                 if center_atom.atomic_symbol == 'C' and neighbour.atomic_symbol == 'H':  # разрывающаяся одинарная c-h связь
-        #
-        #                     for oth_neighbour_id, oth_bond in neighbours.items():
-        #                         if oth_neighbour_id != neighbour_id:
-        #                             oth_neighbour = cgr.atom(oth_neighbour_id)
-        #                             if oth_neighbour.atomic_symbol == 'C' and oth_bond == DynamicBond(None,
-        #                                                                                               1):  # образовалась одинарная с-с
-        #                                 # return True
-        #
-        #                                 neigh_carbon_id = oth_neighbour_id
-        #
-        #                             if oth_bond.order and oth_bond.p_order:  # not None orders
-        #                                 is_condensation = oth_neighbour.atomic_symbol not in ('C', 'H') and \
-        #                                                   oth_bond.order == oth_bond.p_order and \
-        #                                                   oth_bond.order > 1
-        #                                 if is_condensation:  # не учитывается образование С-С связи!!!!!!
-        #                                     return False
-        #
-        #                 if neigh_carbon_id:  # можно пропустить??
-        #                     ultimate_neighbours = list(cgr._bonds[neigh_carbon_id].keys()) + list(neighbours.keys())
-        #                     for neigh_id in ultimate_neighbours:  # test on carbens?
-        #                         if cgr.atom(neigh_id).atomic_symbol not in ('C',
-        #                                                                     'H'):  # если хоть один атом вокруг центрального С и вокруг присоединенного С не С и не Н
-        #                             return False
-        #                     return True
-        #     return False
-
-
-        # is_c_h_breaking = False
-        # is_c_c_formation = False
-        # c_with_h = None
-        # c_bonded = None
-        #
-        # for atom_id, neighbour_id, bond in cgr.bonds():
-        #     center_atom = cgr.atom(atom_id)
-        #     neighbour = cgr.atom(neighbour_id)
-        #
-        #     if bond.order is not None and bond.p_order is None and \
-        #             ((center_atom.atomic_symbol == 'C' and neighbour.atomic_symbol == 'H') or
-        #              (center_atom.atomic_symbol == 'H' and neighbour.atomic_symbol == 'C')):
-        #         is_c_h_breaking = True
-        #         # c_with_h = atom_id
-        #
-        #     if bond.order is None and bond.p_order is not None and \
-        #             center_atom.atomic_symbol == 'C' and neighbour.atomic_symbol == 'C':
-        #         is_c_c_formation = True
-        #         c_bonded = neighbour_id
-        #
-        # if is_c_h_breaking and is_c_c_formation:
-        #     any(neigh.atomic_symbol not in ('C', 'H') for neigh_id, neigh in cgr._bonds[c_with_h].items())
+        :param rule: unique reaction rule with information in meta about the number of reactions from which it was
+        extracted
+        :return: True or False
+        """
+        return True if int(rule.meta['Number_of_reactions']) < self.min_popularity else False

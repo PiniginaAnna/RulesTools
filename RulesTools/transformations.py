@@ -1,4 +1,4 @@
-from CGRtools import MoleculeContainer, ReactionContainer, QueryContainer
+from CGRtools import MoleculeContainer, ReactionContainer, QueryContainer, Reactor
 from typing import Literal, Union, List, Iterable
 from itertools import islice, chain
 
@@ -191,10 +191,12 @@ class CreateRule:
     def __init__(self, rules_from_multistage_reaction: bool = True, environment_atoms_number: int = 1,
                  rule_with_functional_groups: bool = False,
                  functional_groups_list: List[Union[MoleculeContainer, QueryContainer]] = None,
-                 include_rings: bool = True, keep_reagents: bool = True, keep_meta: bool = True, as_query: bool = True,
+                 include_rings: bool = True, add_leaving_and_coming: bool = False,
+                 keep_reagents: bool = True, keep_meta: bool = True, as_query: bool = True,
                  keep_atom_info: Literal['none', 'reaction_center', 'all'] = 'reaction_center',
                  clean_info: Union[frozenset[str], str] = frozenset(
-                     {'neighbors', 'hybridization', 'implicit_hydrogens', 'ring_sizes'})):
+                     {'neighbors', 'hybridization', 'implicit_hydrogens', 'ring_sizes'}),
+                 check_in_reactor: bool = False):
         """
         :param rules_from_multistage_reaction: if True, then it extracts all reaction rules of a given type separately
         from a multistep reaction
@@ -204,11 +206,14 @@ class CreateRule:
         includes the functional groups adjacent to the reaction center
         :param functional_groups_list: list of functional groups contained as MoleculeContainer or QueryContainer
         :param include_rings: if True, it additionally extracts all rings adjacent to the reaction center
+        :param add_leaving_and_coming: if True, it additionally adds leaving and coming groups to the rule
         :param as_query: if True, then returns a reaction rule with query containers and preserves or deletes specified
         structural properties of atoms such as: neighbors, hybridization, implicit hydrogens, ring sizes
         :param keep_atom_info: if 'all', then information about all atoms is saved, if 'reaction_center', then
         information is saved only about reaction center atoms, if 'none', then no information is saved
         :param clean_info: a frozenset of atom info types
+        :param check_in_reactor: if True, the rule is applied to the reaction reactants and if the reaction products are
+        not obtained, returns ValueError
         """
         assert set(clean_info) & {'neighbors', 'hybridization', 'implicit_hydrogens', 'ring_sizes'}
 
@@ -220,11 +225,13 @@ class CreateRule:
         self.rule_with_functional_groups = rule_with_functional_groups
         self.functional_groups_list = functional_groups_list
         self.include_rings = include_rings
+        self.add_leaving_and_coming = add_leaving_and_coming
         self.keep_reagents = keep_reagents
         self.keep_meta = keep_meta
         self.as_query = as_query
         self.keep_atom_info = keep_atom_info
         self.clean_info = clean_info
+        self.check_in_reactor = check_in_reactor
 
     def __call__(self, reaction: ReactionContainer) -> List[ReactionContainer]:
         """
@@ -253,12 +260,10 @@ class CreateRule:
         rule_atoms_numbers = center_atoms_numbers.copy()
 
         if self.environment_atoms_number:
-
             reduced_cgr = cgr.augmented_substructure(center_atoms_numbers, deep=self.environment_atoms_number)
             rule_atoms_numbers = rule_atoms_numbers | set(reduced_cgr)
 
         if self.rule_with_functional_groups:
-
             for molecule in reaction.molecules():
                 for functional_group in self.functional_groups_list:
 
@@ -274,20 +279,16 @@ class CreateRule:
                         functional_group.remap(remapping)
 
         if self.include_rings:
-
             for ring in cgr.connected_rings:
                 if set(ring) & center_atoms_numbers:
                     rule_atoms_numbers |= set(ring)
 
-        rule_reagents = []
-        if self.keep_reagents and self.as_query:
-            rule_reagents = [reagent.substructure(reagent, as_query=True) for reagent in rule_reagents]
-        elif self.keep_reagents:
-            rule_reagents = reaction.reagents
-
-        rule_meta = []
-        if self.keep_meta:
-            rule_meta = reaction.meta
+        if self.add_leaving_and_coming:
+            reactants_atoms = {atom for reactant in reaction.reactants for atom in reactant}
+            products_atoms = {atom for product in reaction.products for atom in product}
+            leaving_atoms = reactants_atoms - products_atoms
+            coming_atoms = products_atoms - reactants_atoms
+            rule_atoms_numbers |= leaving_atoms | coming_atoms
 
         rule_reactants = [reactant.substructure(rule_atoms_numbers.intersection(reactant.atoms_numbers)) for reactant in
                           reaction.reactants if rule_atoms_numbers.intersection(reactant.atoms_numbers)]
@@ -295,13 +296,31 @@ class CreateRule:
                          reaction.products if rule_atoms_numbers.intersection(product.atoms_numbers)]
 
         if self.as_query:
-
             rule_reactants = self._clean_rule_molecules(rule_reactants, reaction.reactants, center_atoms_numbers)
             rule_products = self._clean_rule_molecules(rule_products, reaction.products, center_atoms_numbers)
+
+        if self.keep_reagents and self.as_query:
+            rule_reagents = [reagent.substructure(reagent, as_query=True) for reagent in reaction.reagents]
+        elif self.keep_reagents:
+            rule_reagents = reaction.reagents
+        else:
+            rule_reagents = []
+
+        if self.keep_meta:
+            rule_meta = reaction.meta
+        else:
+            rule_meta = []
 
         reaction_rule = ReactionContainer(rule_reactants, rule_products, rule_reagents, rule_meta)
         reaction_rule.name = reaction.name
         reaction_rule.flush_cache()
+
+        if self.check_in_reactor and self.as_query:
+            reactor = Reactor(reaction_rule)
+            for result_reaction in reactor(reaction.reactants):
+                if result_reaction.reactants == reaction.reactants and result_reaction.products == reaction.products:
+                    return reaction_rule
+            raise ValueError('The reaction rule incorrectly generates products from reactants in the Reactor')
 
         return reaction_rule
 
