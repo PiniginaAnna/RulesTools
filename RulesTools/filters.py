@@ -155,14 +155,10 @@ class CheckDynamicBondsNumber:
         :param reaction: input reaction
         :return: True or False
         """
-        copy_reaction = reaction.copy()
-        try:
-            copy_reaction.kekule()
-        finally:
-            cgr = ~copy_reaction
-            if self.min_bonds_number <= len(cgr.center_bonds) <= self.max_bonds_number:
-                return False
-            return True
+        cgr = ~reaction
+        if self.min_bonds_number <= len(cgr.center_bonds) <= self.max_bonds_number:
+            return False
+        return True
 
 
 class CheckSmallMolecules:
