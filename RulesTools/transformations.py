@@ -120,41 +120,39 @@ class RemoveReagents:
         :param reaction: a reaction object
         :return: cleaned reaction
         """
+        new_reactants = list(reaction.reactants)
+        new_products = list(reaction.products)
+        new_reagents = list(reaction.reagents)
+
+        not_changed_molecules = set(new_reactants).intersection(new_products)
+
+        if not_changed_molecules:
+            new_reactants = [molecule for molecule in new_reactants if molecule not in not_changed_molecules]
+            new_products = [molecule for molecule in new_products if molecule not in not_changed_molecules]
+            new_reagents = new_reagents.extend(not_changed_molecules)
+
         cgr = ~reaction
         center_atoms = set(cgr.center_atoms)
-        not_reacting_molecules = (molecule for molecule in chain(reaction.reactants, reaction.products) if
-                                  center_atoms.isdisjoint(molecule))
 
-        not_changed_molecules = tuple(set(reaction.reactants).intersection(reaction.products))
+        for n, molecule in enumerate(new_reactants.copy()):
+            if center_atoms.isdisjoint(molecule):
+                new_reactants.pop(n)
+                new_reagents.append(molecule)
 
-        molecules_to_remove = set(not_reacting_molecules).union(not_changed_molecules)
+        for n, molecule in enumerate(new_products.copy()):
+            if center_atoms.isdisjoint(molecule):
+                new_products.pop(n)
+                new_reagents.append(molecule)
 
-        if molecules_to_remove:
-            if self.keep_reagents:
-                new_reagents = reaction.reagents + tuple(molecule for molecule in molecules_to_remove if
-                                                         len(molecule) <= self.regents_max_size)
-            else:
-                new_reagents = reaction.reagents
-            new_reaction = ReactionContainer(
-                self._remover(reaction.reactants, molecules_to_remove),
-                self._remover(reaction.products, molecules_to_remove),
-                new_reagents,
-                reaction.meta)
-            new_reaction.name = reaction.name
-            return new_reaction
+        if self.keep_reagents:
+            new_reagents = [molecule for molecule in new_reagents if len(molecule) <= self.regents_max_size]
         else:
-            return reaction
+            new_reagents = []
 
-    @staticmethod
-    def _remover(old: Iterable, changes: Iterable) -> tuple:
-        """
-        Removes from old changes items
+        new_reaction = ReactionContainer(new_reactants, new_products, new_reagents, reaction.meta)
+        new_reaction.name = reaction.name
 
-        :param old: set of items
-        :param changes: items to be removed
-        :return: old items without changes items
-        """
-        return tuple(m for m in old if m not in changes)
+        return new_reaction
 
 
 class AddStandardize:
@@ -188,10 +186,10 @@ class AddCanonicalize:
 class CreateRule:
     """Allows to create reaction rule of various types"""
 
-    def __init__(self, rules_from_multistage_reaction: bool = True, environment_atoms_number: int = 1,
+    def __init__(self, rules_from_multistage_reaction: bool = False, environment_atoms_number: int = 1,
                  rule_with_functional_groups: bool = False,
                  functional_groups_list: List[Union[MoleculeContainer, QueryContainer]] = None,
-                 include_rings: bool = True, add_leaving_and_coming: bool = False,
+                 include_rings: bool = False, add_leaving_and_coming: bool = False,
                  keep_reagents: bool = True, keep_meta: bool = True, as_query: bool = True,
                  keep_atom_info: Literal['none', 'reaction_center', 'all'] = 'reaction_center',
                  clean_info: Union[frozenset[str], str] = frozenset(
@@ -317,8 +315,14 @@ class CreateRule:
 
         if self.check_in_reactor and self.as_query:
             reactor = Reactor(reaction_rule)
+            reaction_products = list(reaction.products)
+            reaction_products.sort()
             for result_reaction in reactor(reaction.reactants):
-                if result_reaction.reactants == reaction.reactants and result_reaction.products == reaction.products:
+                result_products = []
+                for result_product in result_reaction.products:
+                    result_products.extend(result_product.split())
+                result_products.sort()
+                if result_products == reaction_products:
                     return reaction_rule
             raise ValueError('The reaction rule incorrectly generates products from reactants in the Reactor')
 
@@ -388,7 +392,8 @@ class CreateNotQuery:
         """
         not_query_reactants = self.create_not_query_molecules(rule.reactants)
         not_query_products = self.create_not_query_molecules(rule.products)
-        not_query_rule = ReactionContainer(not_query_reactants, not_query_products, rule.reagents, rule.meta)
+        not_query_reagents = self.create_not_query_molecules(rule.reagents)
+        not_query_rule = ReactionContainer(not_query_reactants, not_query_products, not_query_reagents, rule.meta)
         not_query_rule.name = rule.name
         return not_query_rule
 
