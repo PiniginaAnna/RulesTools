@@ -120,29 +120,26 @@ class RemoveReagents:
         :param reaction: a reaction object
         :return: cleaned reaction
         """
-        new_reactants = list(reaction.reactants)
-        new_products = list(reaction.products)
-        new_reagents = list(reaction.reagents)
-
-        not_changed_molecules = set(new_reactants).intersection(new_products)
-
-        if not_changed_molecules:
-            new_reactants = [molecule for molecule in new_reactants if molecule not in not_changed_molecules]
-            new_products = [molecule for molecule in new_products if molecule not in not_changed_molecules]
-            new_reagents = new_reagents.extend(not_changed_molecules)
+        not_changed_molecules = set(reaction.reactants).intersection(reaction.products)
 
         cgr = ~reaction
         center_atoms = set(cgr.center_atoms)
 
-        for n, molecule in enumerate(new_reactants.copy()):
-            if center_atoms.isdisjoint(molecule):
-                new_reactants.pop(n)
-                new_reagents.append(molecule)
+        new_reactants = []
+        new_products = []
+        new_reagents = []
 
-        for n, molecule in enumerate(new_products.copy()):
-            if center_atoms.isdisjoint(molecule):
-                new_products.pop(n)
+        for molecule in reaction.reactants:
+            if center_atoms.isdisjoint(molecule) or molecule in not_changed_molecules:
                 new_reagents.append(molecule)
+            else:
+                new_reactants.append(molecule)
+
+        for molecule in reaction.products:
+            if center_atoms.isdisjoint(molecule) or molecule in not_changed_molecules:
+                new_reagents.append(molecule)
+            else:
+                new_products.append(molecule)
 
         if self.keep_reagents:
             new_reagents = [molecule for molecule in new_reagents if len(molecule) <= self.regents_max_size]
