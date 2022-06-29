@@ -79,7 +79,8 @@ class RebalanceReaction:
         :param reaction: a reaction object
         :return: a rebalanced reaction
         """
-        cgr = ~reaction
+        tmp_reaction = ReactionContainer(reaction.reactants, reaction.products)
+        cgr = ~tmp_reaction
         reactants, products = ~cgr
         rebalanced_reaction = ReactionContainer(reactants.split(), products.split(), reaction.reagents, reaction.meta)
         rebalanced_reaction.name = reaction.name
