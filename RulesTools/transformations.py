@@ -143,7 +143,7 @@ class RemoveReagents:
                 new_products.append(molecule)
 
         if self.keep_reagents:
-            new_reagents = [molecule for molecule in new_reagents if len(molecule) <= self.regents_max_size]
+            new_reagents = {molecule for molecule in new_reagents if len(molecule) <= self.regents_max_size}
         else:
             new_reagents = []
 

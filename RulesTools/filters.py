@@ -381,14 +381,17 @@ class FilterCCRingBreaking:
 
         reaction_center = cgr.augmented_substructure(cgr.center_atoms, deep=0)
         for atom_id, neighbour_id, bond in reaction_center.bonds():
-            atom = reactants_center_atoms[atom_id]
-            neighbour = reactants_center_atoms[neighbour_id]
-
-            is_bond_broken = bond.order is not None and bond.p_order is None
-            are_atoms_carbons = atom.atomic_symbol == 'C' and neighbour.atomic_symbol == 'C'
-            are_atoms_in_ring = bool({5, 6, 7}.intersection(atom.ring_sizes)) and \
-                                bool({5, 6, 7}.intersection(neighbour.ring_sizes)) and \
-                                any(atom_id in ring and neighbour_id in ring for ring in reactants_rings)
+            try:
+                atom = reactants_center_atoms[atom_id]
+                neighbour = reactants_center_atoms[neighbour_id]
+            except KeyError:
+                continue
+            else:
+                is_bond_broken = bond.order is not None and bond.p_order is None
+                are_atoms_carbons = atom.atomic_symbol == 'C' and neighbour.atomic_symbol == 'C'
+                are_atoms_in_ring = bool({5, 6, 7}.intersection(atom.ring_sizes)) and \
+                                    bool({5, 6, 7}.intersection(neighbour.ring_sizes)) and \
+                                    any(atom_id in ring and neighbour_id in ring for ring in reactants_rings)
 
             if is_bond_broken and are_atoms_carbons and are_atoms_in_ring:
                 return True
